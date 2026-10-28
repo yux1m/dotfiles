@@ -1,0 +1,38 @@
+# Managed by chezmoi. Use `dotfiles edit common` for shared settings.
+typeset -U path PATH
+path=("$HOME/.local/bin" $path)
+
+# Also support non-login terminals on macOS.
+if [[ "$OSTYPE" == darwin* && -z "${HOMEBREW_PREFIX:-}" ]]; then
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv zsh)"
+  elif [[ -x /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv zsh)"
+  fi
+  path=("$HOME/.local/bin" $path)
+fi
+
+export ZSH="$HOME/.oh-my-zsh"
+ZSH_THEME=""
+# Versions are managed by the repository's dependency manifest.
+zstyle ':omz:update' mode disabled
+
+# Put OMZ options here so they take effect before OMZ loads.
+source "$HOME/.config/zsh/options.zsh"
+source "$HOME/.config/zsh/plugins.zsh"
+if [[ -f "$ZSH/oh-my-zsh.sh" ]]; then
+  source "$ZSH/oh-my-zsh.sh"
+else
+  print -u2 'Oh My Zsh is missing. Run: chezmoi apply'
+fi
+
+source "$HOME/.config/zsh/common.zsh"
+case "$OSTYPE" in
+  darwin*) source "$HOME/.config/zsh/macos.zsh" ;;
+  linux*) source "$HOME/.config/zsh/linux.zsh" ;;
+esac
+
+# This file is intentionally local and is never added by this repository.
+[[ -f "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"
+(( $+commands[starship] )) && eval "$(starship init zsh)"
+true

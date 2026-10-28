@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+target_home={{ .chezmoi.destDir | shellQuote }}
+umask 077
+backup_root="$target_home/.local/state/dotfiles/backups"
+mkdir -p "$backup_root"
+snapshot=$(mktemp -d "$backup_root/.snapshot.XXXXXX")
+trap 'rm -rf "$snapshot"' EXIT
+files=(.zshrc .zprofile .config/starship.toml .config/zsh/options.zsh
+       .config/zsh/common.zsh .config/zsh/macos.zsh .config/zsh/linux.zsh
+       .config/zsh/plugins.zsh .local/bin/dotfiles)
+for rel in "${files[@]}"; do
+  if [[ -f "$target_home/$rel" ]]; then
+    mkdir -p "$snapshot/$(dirname "$rel")"
+    cp -p "$target_home/$rel" "$snapshot/$rel"
+    (cd "$snapshot" && cksum "$rel") >> "$snapshot/manifest.txt"
+  fi
+done
+[[ -s "$snapshot/manifest.txt" ]] || exit 0
+if [[ -f "$backup_root/last-manifest.txt" ]] && cmp -s "$snapshot/manifest.txt" "$backup_root/last-manifest.txt"; then
+  exit 0
+fi
+destination="$backup_root/$(date -u +%Y%m%dT%H%M%SZ)-$$"
+cp "$snapshot/manifest.txt" "$backup_root/last-manifest.txt"
+mv "$snapshot" "$destination"
+printf 'Saved previous configuration: %s\n' "$destination"

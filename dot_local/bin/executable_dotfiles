@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export PATH="$HOME/.local/bin:$PATH"
+source_dir=$(chezmoi source-path)
+resolve_target() {
+  case "${1:-common}" in
+    common|options|macos|linux) printf '%s/.config/zsh/%s.zsh\n' "$HOME" "$1" ;;
+    prompt) printf '%s/.config/starship.toml\n' "$HOME" ;;
+    zshrc) printf '%s/.zshrc\n' "$HOME" ;;
+    zprofile) printf '%s/.zprofile\n' "$HOME" ;;
+    *) echo 'Choose common, options, macos, linux, prompt, plugins, local, zshrc or zprofile.' >&2; return 2 ;;
+  esac
+}
+edit_file() {
+  local -a editor_command
+  read -r -a editor_command <<< "${VISUAL:-${EDITOR:-nano}}"
+  "${editor_command[@]}" "$1"
+}
+require_applied() {
+  if ! chezmoi verify --exclude=scripts >/dev/null; then
+    echo 'Source and installed files differ. Use dotfiles status / chezmoi diff first.' >&2
+    echo 'Edited installed files? Use dotfiles capture NAME. Edited source files? Run chezmoi apply.' >&2
+    return 1
+  fi
+}
+command_name=${1:-help}
+if (( $# )); then shift; fi
+case "$command_name" in
+  edit)
+    name=${1:-common}
+    case "$name" in
+      plugins) edit_file "$source_dir/.chezmoidata.toml"; chezmoi apply ;;
+      local) touch "$HOME/.zshrc.local"; chmod 600 "$HOME/.zshrc.local"; edit_file "$HOME/.zshrc.local" ;;
+      *) chezmoi edit --apply "$(resolve_target "$name")" ;;
+    esac
+    echo 'For Zsh changes, open a new terminal or run: exec zsh -l'
+    ;;
+  capture)
+    [[ $# == 1 ]] || { echo 'Usage: dotfiles capture NAME (plain managed files only)' >&2; exit 2; }
+    chezmoi re-add "$(resolve_target "$1")"
+    echo 'Imported installed file into source. Review with: dotfiles status'
+    ;;
+  pull)
+    [[ -z $(git -C "$source_dir" status --porcelain) ]] || {
+      echo 'Your source has unpublished edits. Commit/push or resolve them before pulling.' >&2; exit 1;
+    }
+    require_applied
+    chezmoi update
+    echo 'Open a new terminal or run: exec zsh -l'
+    ;;
+  push)
+    require_applied
+    git -C "$source_dir" diff --stat
+    chezmoi push
+    ;;
+  status)
+    printf 'Source repository: %s\n' "$source_dir"
+    git -C "$source_dir" status --short --branch
+    chezmoi status --exclude=scripts
+    ;;
+  doctor)
+    for tool in zsh chezmoi starship fzf zoxide; do
+      command -v "$tool"
+      "$tool" --version | awk 'NR == 1 {print}'
+    done
+    chezmoi verify --exclude=scripts
+    echo 'Managed files match the source.'
+    ;;
+  backups)
+    printf 'Configuration backups: %s\n' "$HOME/.local/state/dotfiles/backups"
+    ls -1 "$HOME/.local/state/dotfiles/backups"
+    ;;
+  help|-h|--help)
+    cat <<'EOF'
+dotfiles edit common    Shared aliases, functions, key bindings
+dotfiles edit options   Shared options loaded before Oh My Zsh
+dotfiles edit prompt    Starship colors and prompt layout
+dotfiles edit macos     macOS-only settings (sync to the repo)
+dotfiles edit linux     Linux-only settings (sync to the repo)
+dotfiles edit plugins   Plugin list, sources, pinned versions
+dotfiles edit local     This machine only (never published)
+dotfiles capture NAME   Import a directly edited plain config into source
+dotfiles status         Show source and installed-file differences
+dotfiles push           Commit and publish applied source changes
+dotfiles pull           Fetch and apply published changes
+dotfiles doctor         Check commands and managed-file consistency
+dotfiles backups        List automatic local configuration backups
+
+Workflow on either OS: pull -> edit -> test in a new terminal -> push
+Guide: https://github.com/yux1m/dotfiles/blob/main/docs/guide.md
+EOF
+    ;;
+  *) echo "Unknown command: $command_name" >&2; exit 2 ;;
+esac

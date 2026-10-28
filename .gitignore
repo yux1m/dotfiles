@@ -1,0 +1,14 @@
+.DS_Store
+*.swp
+*.swo
+*~
+*.bak
+*.log
+.env
+.env.*
+*.local
+*.local.zsh
+.zsh_history
+.ssh/
+backups/
+test-results/

@@ -1,0 +1,12 @@
+# Login-shell setup. Interactive behavior lives in ~/.zshrc.
+if [[ "$OSTYPE" == darwin* ]]; then
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv zsh)"
+  elif [[ -x /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv zsh)"
+  fi
+fi
+typeset -U path PATH
+path=("$HOME/.local/bin" $path)
+[[ -f "$HOME/.zprofile.local" ]] && source "$HOME/.zprofile.local"
+true

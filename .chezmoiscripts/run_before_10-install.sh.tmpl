@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+set -euo pipefail
+target_home={{ .chezmoi.destDir | shellQuote }}
+# Every apply checks desired dependencies, so retries repair partial installations.
+[[ "${DOTFILES_SKIP_INSTALL:-0}" == 1 ]] && exit 0
+[[ $(id -u) -ne 0 ]] || { echo 'Run as your normal user, not root.' >&2; exit 1; }
+export PATH="$target_home/.local/bin:$PATH"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+mkdir -p "$target_home/.local/bin"
+os=$(uname -s)
+case "$os" in
+  Linux)
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    case "$ID" in ubuntu|debian) ;; *) echo 'Supported Linux distributions: Ubuntu and Debian.' >&2; exit 1 ;; esac
+    missing=()
+    for package in ca-certificates curl git zsh unzip fontconfig; do
+      if [[ $(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true) != 'install ok installed' ]]; then
+        missing+=("$package")
+      fi
+    done
+    if (( ${#missing[@]} )); then
+      sudo apt-get update
+      sudo apt-get install -y "${missing[@]}"
+    fi
+    case "$(uname -m)" in
+      x86_64) arch=amd64 ;;
+      aarch64|arm64) arch=arm64 ;;
+      *) echo 'Supported Linux architectures: x86_64 and ARM64.' >&2; exit 1 ;;
+    esac
+    ;;
+  Darwin)
+    if ! command -v brew >/dev/null; then
+      echo 'Install Homebrew first: https://brew.sh/' >&2
+      exit 1
+    fi
+    missing=()
+    for package in git starship fzf zoxide; do
+      command -v "$package" >/dev/null || missing+=("$package")
+    done
+    if (( ${#missing[@]} )); then
+      HOMEBREW_NO_AUTO_UPDATE=1 brew install "${missing[@]}"
+    fi
+    ;;
+  *) echo 'Supported systems: macOS, Ubuntu, Debian.' >&2; exit 1 ;;
+esac
+
+download_checked() {
+  local url=$1 output=$2 expected=$3 actual
+  curl --fail --location --silent --show-error --retry 3 "$url" -o "$output"
+  if command -v sha256sum >/dev/null; then
+    actual=$(sha256sum "$output" | awk '{print $1}')
+  else
+    actual=$(shasum -a 256 "$output" | awk '{print $1}')
+  fi
+  [[ "$actual" == "$expected" ]] || { echo "Checksum mismatch: $url" >&2; return 1; }
+}
+
+install_binary() {
+  local name=$1 version=$2 url=$3 sha=$4 current=''
+  if [[ -x "$target_home/.local/bin/$name" ]]; then
+    current=$("$target_home/.local/bin/$name" --version | awk 'NR == 1 {print}')
+    case "$current" in "$name $version"|"$name $version "*|"$version "*|"$version") return ;; esac
+  fi
+  printf 'Installing %s %s\n' "$name" "$version"
+  mkdir -p "$work/$name"
+  download_checked "$url" "$work/$name.tar.gz" "$sha"
+  tar -xzf "$work/$name.tar.gz" -C "$work/$name"
+  # Stage on the destination filesystem, then rename atomically.
+  install -m 755 "$work/$name/$name" "$target_home/.local/bin/.$name.new"
+  mv -f "$target_home/.local/bin/.$name.new" "$target_home/.local/bin/$name"
+}
+
+if [[ "$os" == Linux ]]; then
+  case "$arch" in
+    amd64)
+{{ range $name, $tool := .tools }}      install_binary {{ $name | shellQuote }} {{ $tool.version | shellQuote }} {{ $tool.amd64URL | shellQuote }} {{ $tool.amd64SHA256 | shellQuote }}
+{{ end }}      ;;
+    arm64)
+{{ range $name, $tool := .tools }}      install_binary {{ $name | shellQuote }} {{ $tool.version | shellQuote }} {{ $tool.arm64URL | shellQuote }} {{ $tool.arm64SHA256 | shellQuote }}
+{{ end }}      ;;
+  esac
+fi
+
+ensure_git() {
+  local url=$1 destination=$2 commit=$3 entry=$4 current='' origin='' staging
+  if [[ -e "$destination" ]]; then
+    [[ -d "$destination/.git" ]] || { echo "Existing non-Git directory; inspect it first: $destination" >&2; return 1; }
+    origin=$(git -C "$destination" remote get-url origin)
+    [[ "${origin%.git}" == "${url%.git}" ]] || { echo "Unexpected repository in $destination" >&2; return 1; }
+    current=$(git -C "$destination" rev-parse HEAD)
+    [[ "$current" == "$commit" && -f "$destination/$entry" ]] && return 0
+    [[ -z $(git -C "$destination" status --porcelain) ]] || { echo "Local plugin changes must be saved first: $destination" >&2; return 1; }
+    git -C "$destination" fetch --quiet --depth=1 origin "$commit"
+    git -C "$destination" checkout --quiet --detach "$commit"
+  else
+    mkdir -p "$(dirname "$destination")"
+    staging=$(mktemp -d "$(dirname "$destination")/.dotfiles-clone.XXXXXX")
+    if ! (git -C "$staging" init --quiet &&
+          git -C "$staging" remote add origin "$url" &&
+          git -C "$staging" fetch --quiet --depth=1 origin "$commit" &&
+          git -C "$staging" checkout --quiet --detach FETCH_HEAD &&
+          test -f "$staging/$entry"); then
+      rm -rf "$staging"
+      echo "Could not install $url" >&2
+      return 1
+    fi
+    mv "$staging" "$destination"
+  fi
+  [[ -f "$destination/$entry" ]] || { echo "Missing entry file: $destination/$entry" >&2; return 1; }
+}
+
+ensure_git 'https://github.com/ohmyzsh/ohmyzsh.git' "$target_home/.oh-my-zsh" {{ .terminal.ohMyZshCommit | shellQuote }} 'oh-my-zsh.sh'
+{{ range .terminal.externalPlugins }}ensure_git {{ .url | shellQuote }} "$target_home/.oh-my-zsh/custom/plugins/"{{ .name | shellQuote }} {{ .commit | shellQuote }} {{ printf "%s.plugin.zsh" .name | shellQuote }}
+{{ end }}
+
+# Fail before writing .zshrc when a newly registered built-in plugin is misspelled.
+{{ range .terminal.builtinPlugins }}test -d "$target_home/.oh-my-zsh/plugins/"{{ . | shellQuote }} || { echo {{ printf "Unknown built-in plugin: %s" . | shellQuote }} >&2; exit 1; }
+{{ end }}
+font_version={{ .font.version | shellQuote }}
+if [[ "$os" == Darwin ]]; then
+  font_root="$target_home/Library/Fonts"
+  if [[ -f "$font_root/JetBrainsMonoNerdFontMono-Regular.ttf" ]]; then
+    exit 0
+  fi
+else
+  font_root="$target_home/.local/share/fonts"
+fi
+font_dir="$font_root/JetBrainsMonoNerdFont"
+if [[ ! -f "$font_dir/.version" ]] || [[ $(cat "$font_dir/.version") != "$font_version" ]] ||
+   [[ ! -f "$font_dir/JetBrainsMonoNerdFontMono-Regular.ttf" ]] ||
+   [[ ! -f "$font_dir/JetBrainsMonoNerdFontMono-Bold.ttf" ]] ||
+   [[ ! -f "$font_dir/JetBrainsMonoNerdFontMono-Italic.ttf" ]] ||
+   [[ ! -f "$font_dir/JetBrainsMonoNerdFontMono-BoldItalic.ttf" ]]; then
+  echo 'Installing JetBrainsMono Nerd Font Mono'
+  download_checked {{ .font.url | shellQuote }} "$work/font.zip" {{ .font.sha256 | shellQuote }}
+  mkdir -p "$work/fonts" "$font_dir"
+  for style in Regular Bold Italic BoldItalic; do
+    unzip -j -q "$work/font.zip" "JetBrainsMonoNerdFontMono-$style.ttf" -d "$work/fonts"
+    install -m 644 "$work/fonts/JetBrainsMonoNerdFontMono-$style.ttf" "$font_dir/"
+  done
+  # Preserve the font license distributed in the release.
+  unzip -j -q "$work/font.zip" 'OFL.txt' -d "$work/fonts"
+  install -m 644 "$work/fonts/OFL.txt" "$font_dir/"
+  if [[ "$os" == Linux ]]; then fc-cache -f "$font_dir"; fi
+  printf '%s\n' "$font_version" > "$font_dir/.version"
+fi

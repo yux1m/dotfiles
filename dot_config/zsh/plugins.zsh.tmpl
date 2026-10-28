@@ -1,0 +1,12 @@
+# Generated from .chezmoidata.toml. Use `dotfiles edit plugins` to change it.
+plugins=(
+{{ range .terminal.builtinPlugins }}  {{ . | shellQuote }}
+{{ end }})
+if [[ "$OSTYPE" == darwin* ]]; then
+  plugins+=(
+{{ range .terminal.macosPlugins }}    {{ . | shellQuote }}
+{{ end }}  )
+fi
+plugins+=(
+{{ range .terminal.externalPlugins }}  {{ .name | shellQuote }}
+{{ end }})

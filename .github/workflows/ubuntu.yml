@@ -1,0 +1,29 @@
+name: Ubuntu installation tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create disposable account
+        run: |
+          sudo useradd --create-home --shell /bin/bash dotfiles-test
+          echo 'dotfiles-test ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/dotfiles-test >/dev/null
+          sudo chmod 440 /etc/sudoers.d/dotfiles-test
+          sudo cp -a "$GITHUB_WORKSPACE" /tmp/dotfiles-under-test
+          sudo chown -R dotfiles-test:dotfiles-test /tmp/dotfiles-under-test
+      - name: Install and verify as a regular user
+        run: sudo -iu dotfiles-test bash /tmp/dotfiles-under-test/tests/integration.sh
+      - name: Validate templates and backup behavior
+        run: sudo -iu dotfiles-test bash -c 'export PATH="$HOME/.local/bin:$PATH"; bash /tmp/dotfiles-under-test/tests/static.sh'
