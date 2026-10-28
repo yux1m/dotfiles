@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 [[ $(id -un) == dotfiles-test ]] || { echo 'Run only as the disposable dotfiles-test account.' >&2; exit 1; }
+# Hosted runners may keep their owner's XDG paths across sudo -i.
+unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_STATE_HOME
 export PATH="$HOME/.local/bin:$PATH"
 test_source=$(cd "$(dirname "$0")/.." && pwd)
 source_dir="$HOME/.local/share/chezmoi"

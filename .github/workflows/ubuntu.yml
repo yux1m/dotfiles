@@ -16,6 +16,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Create disposable account
         run: |
           sudo useradd --create-home --shell /bin/bash dotfiles-test

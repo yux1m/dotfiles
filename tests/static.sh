@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_STATE_HOME
 source_dir=$(cd "$(dirname "$0")/.." && pwd)
 test_root=$(mktemp -d)
 trap 'rm -rf "$test_root"' EXIT
