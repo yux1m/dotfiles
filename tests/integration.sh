@@ -16,6 +16,8 @@ printf '# local-only sentinel\n' > "$HOME/.zshrc.local"
 bash "$source_dir/install.sh" --source "$source_dir"
 chezmoi verify --exclude=scripts
 [[ $(getent passwd "$(id -un)" | cut -d: -f7) == /bin/bash ]]
+# Hosted images grant broad ACLs here; use normal secure completion permissions.
+sudo chmod -R go-w /usr/share/zsh
 for tool in starship fzf zoxide; do "$tool" --version; done
 cat > "$HOME/assert-shell.zsh" <<'ZSH'
   [[ "$ZSH_THEME" == "" ]] || exit 1
@@ -27,15 +29,15 @@ cat > "$HOME/assert-shell.zsh" <<'ZSH'
   starship prompt >/dev/null
   dotfiles doctor
 ZSH
-TERM=xterm-256color script -q -e -c 'zsh -lic "source ~/assert-shell.zsh"' /dev/null > "$HOME/first-shell.log" 2>&1
+TERM=xterm-256color script -q -e -c 'zsh -lic "source ~/assert-shell.zsh"' /dev/null > "$HOME/first-shell.log" 2>&1 || { cat "$HOME/first-shell.log"; exit 1; }
 cat "$HOME/first-shell.log"
-if grep -Ei 'not found|parse error|permission denied|error.*config' "$HOME/first-shell.log"; then
+if grep -Ei 'not found|parse error|permission denied|error.*config|initialization aborted' "$HOME/first-shell.log"; then
   echo 'FAIL: shell startup emitted an error.' >&2; exit 1
 fi
 # Both interactive and login Bash must load the native integrations exactly once.
 cat > "$HOME/assert-shell.bash" <<'BASH'
   [[ ${_DOTFILES_BASH_INIT_LOADED:-} == 1 ]] || exit 1
-  declare -F z zi fzf-history-widget >/dev/null || exit 1
+  declare -F z zi __fzf_history__ >/dev/null || exit 1
   [[ ${STARSHIP_SHELL:-} == bash ]] || exit 1
   ! declare -F _zsh_autosuggest_start >/dev/null || exit 1
   before=$(declare -p PROMPT_COMMAND)
@@ -45,7 +47,7 @@ cat > "$HOME/assert-shell.bash" <<'BASH'
   dotfiles doctor
 BASH
 for flags in -ic -lic; do
-  TERM=xterm-256color script -q -e -c "bash $flags 'source ~/assert-shell.bash'" /dev/null > "$HOME/bash-shell.log" 2>&1
+  TERM=xterm-256color script -q -e -c "bash $flags 'source ~/assert-shell.bash'" /dev/null > "$HOME/bash-shell.log" 2>&1 || { cat "$HOME/bash-shell.log"; exit 1; }
   cat "$HOME/bash-shell.log"
   if grep -Ei 'not found|syntax error|permission denied|error.*config' "$HOME/bash-shell.log"; then exit 1; fi
 done
