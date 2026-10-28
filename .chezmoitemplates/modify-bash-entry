@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Preserve all local content outside our explicitly marked block.
+awk '
+  $0 == "# >>> dotfiles Bash integration >>>" { if (inside) exit 1; inside=1; next }
+  $0 == "# <<< dotfiles Bash integration <<<" { if (!inside) exit 1; inside=0; next }
+  !inside { print }
+  END { if (inside) exit 1 }
+'
+cat <<'BLOCK'
+# >>> dotfiles Bash integration >>>
+{{ if eq . "bashrc" -}}
+if [ -f "$HOME/.config/bash/init.bash" ]; then
+    . "$HOME/.config/bash/init.bash"
+fi
+{{ else -}}
+if [ -n "${BASH_VERSION:-}" ] && [ "${_DOTFILES_BASH_INIT_LOADED:-}" != 1 ]; then
+    case $- in
+        *i*) if [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi ;;
+    esac
+fi
+{{ end -}}
+# <<< dotfiles Bash integration <<<
+BLOCK

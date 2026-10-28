@@ -12,9 +12,9 @@ GitHub 保存期望配置和历史，chezmoi 根据源文件生成生效文件�
 | Zsh、OMZ | 通用插件、自动建议、语法高亮；历史仍由本机积累 |
 | fzf、zoxide | 安装并启用；zoxide 访问记录留在本机 |
 | macOS | Homebrew 初始化、已有 Miniforge 初始化、已有 iTerm2 shell integration |
-| Ubuntu | 安装 Zsh、必要系统包和固定版本工具，切换默认 shell |
+| Ubuntu | 默认 Bash，原生加载 Starship / fzf / zoxide；保留 Zsh、OMZ 及其插件 |
 | 字体 | 安装 JetBrainsMono Nerd Font Mono；Mac 已有该字体时保留现状 |
-| 仅本机入口 | `~/.zshrc.local`、`~/.zprofile.local`，不会被本仓库覆盖或主动上传 |
+| 仅本机入口 | `~/.bashrc.local`、`~/.zshrc.local`、`~/.zprofile.local`，不会被本仓库覆盖或主动上传 |
 
 不管理项目资料、SSH 密钥、GitHub 登录、Conda 环境、VS Code 扩展、VMware 设置、Ubuntu 桌面设置。字体选用、终端背景色与窗口快捷键仍是终端应用的设置。
 
@@ -28,7 +28,7 @@ sudo apt-get update && sudo apt-get install -y curl && bash -c "$(curl -fsSL htt
 
 不要在 `bash` 前加 sudo，避免装进 root 的主目录。安装系统包及更改默认 shell 时会由脚本调用 sudo。
 
-安装后执行 `exec zsh -l`，并在终端偏好设置中选择 **JetBrainsMono Nerd Font Mono**。注销再登录后，默认 shell 设置全面生效。远程 SSH 使用 Mac 终端时，由 Mac 终端选择字体。
+安装后执行 `exec bash -l`，并在终端偏好设置中选择 **JetBrainsMono Nerd Font Mono**。注销再登录后，默认 shell 设置全面生效。远程 SSH 使用 Mac 终端时，由 Mac 终端选择字体。
 
 脚本可以重跑：备份原配置、跳过已满足的依赖、重试未完成的下载。Linux 工具安装在 `~/.local/bin/`；这个路径优先于系统命令路径。每个下载包在安装前进行 SHA256 校验。
 
@@ -48,13 +48,15 @@ dotfiles pull
 
 | 命令 | 修改内容 | 适用系统 |
 |---|---|---|
-| `dotfiles edit common` | 共用 aliases、函数、快捷键 | 两边 |
-| `dotfiles edit options` | OMZ 加载前的设置，如历史时间格式 | 两边 |
+| `dotfiles edit bash` | Bash 的 aliases、函数、选项 | Ubuntu 加载；Mac 也能编辑并发布 |
+| `dotfiles edit common` | Zsh 的 aliases、函数、快捷键 | 两边的 Zsh |
+| `dotfiles edit options` | OMZ 加载前的设置，如历史时间格式 | 两边的 Zsh |
 | `dotfiles edit prompt` | Starship 配色、图标、布局 | 两边 |
 | `dotfiles edit macos` | Homebrew/Conda/iTerm2 等 Mac 配置 | 只在 macOS 加载 |
-| `dotfiles edit linux` | Linux 专用命令或环境配置 | 只在 Linux 加载 |
+| `dotfiles edit linux` | Linux 的 Zsh 专用配置 | 只在 Linux 的 Zsh 加载 |
 | `dotfiles edit plugins` | 插件名称、仓库来源、固定版本 | 根据系统生成 |
-| `dotfiles edit local` | 当前机器的私有设置 | 仅本机 |
+| `dotfiles edit local` | 当前机器的私有设置 | Linux 编辑 `.bashrc.local`；Mac 编辑 `.zshrc.local` |
+| `dotfiles edit bash-local` / `zsh-local` | 明确选择 shell 的私有入口 | 仅本机 |
 
 例如修改提示符：
 
@@ -82,14 +84,16 @@ dotfiles push
 
 ```bash
 dotfiles pull
-exec zsh -l
+exec bash -l
 ```
 
 本方案没有配置后台监听、自动提交、定时拉取。保存文件、应用到本机、上传 GitHub、其他机器下载，是不同步骤。
 
 ## 4. 在 Linux 修改并回传 Mac
 
-流程与 Mac 相同。通用设置改 `common` / `options` / `prompt`；只适用于 Linux 的内容改 `linux`；仅当前虚拟机需要的设置改 `local`。
+流程与 Mac 相同。**Bash 设置改 `bash`，共用提示符改 `prompt`，仅当前虚拟机需要的 Bash 设置改 `local`**。`common` / `options` / `linux` 都属于保留下来的 Zsh 配置，Bash 不会加载。
+
+Mac 也能使用 `dotfiles edit bash` 来维护 Ubuntu 的 Bash 配置。回传到 Mac 后，Bash 文件会同步保存，但不会自动加载进 Mac 的 Zsh。
 
 新虚拟机从公开仓库下载配置无需 GitHub 登录；要向 GitHub 发布，需要单独配置写入身份。
 
@@ -109,7 +113,7 @@ chezmoi git config user.email 96606372+yux1m@users.noreply.github.com
 
 ```bash
 dotfiles pull
-dotfiles edit common
+dotfiles edit bash
 # 新终端测试
 dotfiles push
 ```
@@ -124,6 +128,8 @@ Mac 上运行 `dotfiles pull` 即可接收。两台机器没有主从限制，Gi
 
 | 源文件 | 生成的生效文件 |
 |---|---|
+| `dot_config/bash/common.bash` | `~/.config/bash/common.bash` |
+| `modify_dot_bashrc.tmpl` | 只更新 Linux `~/.bashrc` 中的标记块 |
 | `dot_zshrc` | `~/.zshrc` |
 | `dot_zprofile` | `~/.zprofile` |
 | `dot_config/starship.toml` | `~/.config/starship.toml` |
@@ -161,6 +167,12 @@ dotfiles push
 
 `plugins.zsh` 是从清单生成的，修改它应使用 `dotfiles edit plugins`。模板文件不要用普通文件的重新导入流程覆盖。
 
+### Bash 入口保留本机内容
+
+Ubuntu 的 `.bashrc` 使用 `modify_` 局部修改，只维护 `dotfiles Bash integration` 标记块。登录入口按 Bash 的优先级，选择已有 `.bash_profile`、已有 `.bash_login`，否则使用 `.profile`。原有内容会保留；Mac 的这些入口不作修改。
+
+需要同步的 Bash 设置写到 `dotfiles edit bash`。直接修改 `~/.config/bash/common.bash` 后，用 `dotfiles capture bash` 导回源。不要对 `.bashrc`、`.profile` 使用 `chezmoi add` / `re-add` 来发布整份本机配置；标记块以外的内容不会自动同步，也不会导致 `dotfiles pull` 拒绝更新。
+
 ### 机器差异怎样处理
 
 本仓库把大部分设置保存为普通文件，方便直接阅读和导入。Zsh 根据系统只加载 `macos.zsh` 或 `linux.zsh`。两份文件都会在两边保存，因此你也能在 Mac 上维护 Linux 配置。
@@ -168,6 +180,8 @@ dotfiles push
 插件列表和安装脚本由 `.chezmoidata.toml` 渲染生成。chezmoi 模板也支持操作系统、架构和本机变量；本方案没有要求你在日常修改别名时学习模板语言。
 
 ## 6. 新增插件与更新工具版本
+
+Bash 当前只有三个原生集成：`fzf --bash`、`zoxide init bash`、`starship init bash`。它们使用与 Zsh 相同的工具安装和 Starship 配置。下面的 OMZ 插件清单仅影响 Zsh；不会将 Zsh 插件转换成 Bash 插件。
 
 运行 `dotfiles edit plugins`。
 
@@ -218,11 +232,19 @@ cp ~/.local/state/dotfiles/backups/实际快照目录/.zshrc ~/.zshrc
 
 把“实际快照目录”替换为列出的目录。若要保留旧内容并继续管理，随后 `dotfiles capture zshrc` 并发布；否则下次应用仓库配置时仍可能将它改回。
 
-如果 Zsh 配置出错，可以先用 `bash` 进入不加载 `.zshrc` 的 shell，然后恢复文件。要恢复 Ubuntu 的默认 Bash：`chsh -s /bin/bash`，之后注销登录。
+如果某个 shell 配置出错，可用 `bash --noprofile --norc` 进入不加载用户配置的 Bash，再恢复文件。Ubuntu 默认 shell 由本方案设为 `/bin/bash`。每次应用都会检查默认 shell；临时跳过可用 `DOTFILES_SKIP_SHELL=1 chezmoi apply`。这不卸载 Zsh，也不会切换已有会话。
 
 停止管理某文件可用 `chezmoi forget 文件`，它保留当前生效文件。注意它同时改变源仓库；发布该改动后其他机器也会停止管理对应文件。整个仓库删除前先保留你需要的生效文件和备份。
 
-## 9. 更多边界
+## 9. Bash 与 Zsh 切换
+
+Ubuntu 正常启动 Bash；输入 `zsh` 进入保留的 Zsh/OMZ，输入 `exit` 回到外层 Bash。要把当前窗口直接切换为 Bash，可运行 `exec bash -l`。`ps -p $$ -o comm=` 查看当前解释器；`getent passwd "$USER" | cut -d: -f7` 查看账户默认 shell。旧会话里的 `$SHELL` 可能暂时仍是旧值。
+
+Bash 具有 Starship 外观、fzf 历史/文件搜索、zoxide 的 `z` / `zi`。OMZ Git 简写、extract、sudo 双击快捷键、colored-man-pages、Zsh 自动建议和语法高亮只在 Zsh 中启用；Git、tar、sudo 等底层命令在 Bash 仍可正常使用。
+
+如果注销登录后新窗口仍启动 Zsh，请检查终端配置中是否显式指定了 `zsh` 自定义命令；账户默认 shell 不会覆盖终端自己的自定义命令。
+
+## 10. 更多边界
 
 - 一条命令完成安装并不等于没有交互：sudo 可能要求密码，字体需要在具体终端里选择。
 - 新虚拟机的用户名、目录、Git 状态和版本显示会反映新机器本身；配置相同并不意味着动态内容相同。

@@ -56,20 +56,18 @@ else
   cm=(chezmoi)
 fi
 # The first before-script backs up existing files before any replacement.
+if [[ "$skip_shell" == 1 ]]; then export DOTFILES_SKIP_SHELL=1; fi
 "${cm[@]}" apply --force
 "${cm[@]}" verify --exclude=scripts
 
-if [[ $(uname -s) == Linux && "$skip_shell" == 0 ]]; then
-  zsh_path=$(command -v zsh)
-  current_shell=$(getent passwd "$(id -un)" | cut -d: -f7)
-  if [[ "$current_shell" != "$zsh_path" ]]; then
-    sudo chsh -s "$zsh_path" "$(id -un)"
-  fi
+if [[ $(uname -s) == Linux ]]; then
+  echo 'Start now: exec bash -l (Zsh is still available with: zsh)'
+else
+  echo 'Start now: exec zsh -l'
 fi
 cat <<'EOF'
 
 Terminal setup completed.
-Start now: exec zsh -l
 Log out and back in to use the new default shell everywhere.
 In the Ubuntu terminal preferences, select: JetBrainsMono Nerd Font Mono
 Update later: dotfiles pull

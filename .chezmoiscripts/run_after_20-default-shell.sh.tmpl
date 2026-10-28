@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+target_home={{ .chezmoi.destDir | shellQuote }}
+# Isolated destinations and dependency-free checks must never change the account.
+[[ ${DOTFILES_SKIP_INSTALL:-0} != 1 && ${DOTFILES_SKIP_SHELL:-0} != 1 ]] || exit 0
+[[ $(uname -s) == Linux && "$target_home" == "$HOME" ]] || exit 0
+current_shell=$(getent passwd "$(id -un)" | cut -d: -f7)
+if [[ "$current_shell" != /bin/bash && "$current_shell" != /usr/bin/bash ]]; then
+  sudo chsh -s /bin/bash "$(id -un)"
+fi

@@ -38,4 +38,43 @@ snapshots=("$test_root/target/.local/state/dotfiles/backups/"20*)
 after=${#snapshots[@]}
 [[ "$before" == "$after" ]]
 "${cm[@]}" verify --exclude=scripts
-echo 'PASS: render/syntax, safe backups, preserved unmanaged files, repeat apply.'
+# Exercise both OS branches, all Bash login entry points and repeat application.
+for os in darwin linux; do
+  for login in .profile .bash_login .bash_profile; do
+    dest="$test_root/$os-${login#.}"
+    mkdir -p "$dest"
+    printf '# original bashrc\n' > "$dest/.bashrc"
+    printf '# original login\n' > "$dest/$login"
+    cross=(chezmoi --source "$source_dir" --destination "$dest"
+           --config "$test_root/config.toml" --cache "$test_root/cache"
+           --persistent-state "$test_root/state.boltdb"
+           --override-data "{\"chezmoi\":{\"os\":\"$os\"}}")
+    DOTFILES_SKIP_INSTALL=1 "${cross[@]}" apply --force
+    cp "$dest/.bashrc" "$test_root/bashrc.once"
+    cp "$dest/$login" "$test_root/login.once"
+    DOTFILES_SKIP_INSTALL=1 "${cross[@]}" apply --force
+    "${cross[@]}" verify --exclude=scripts
+    cmp "$dest/.bashrc" "$test_root/bashrc.once"
+    cmp "$dest/$login" "$test_root/login.once"
+    grep -qx '# original bashrc' "$dest/.bashrc"
+    grep -qx '# original login' "$dest/$login"
+    if [[ "$os" == linux ]]; then
+      [[ $(grep -c '^# >>> dotfiles Bash integration >>>$' "$dest/.bashrc") == 1 ]]
+      [[ $(grep -c '^# >>> dotfiles Bash integration >>>$' "$dest/$login") == 1 ]]
+    else
+      [[ $(wc -l < "$dest/.bashrc" | tr -d ' ') == 1 ]]
+      [[ $(wc -l < "$dest/$login" | tr -d ' ') == 1 ]]
+    fi
+    bash -n "$dest/.bashrc" "$dest/$login"
+  done
+done
+for file in "$source_dir"/dot_config/bash/*.bash; do bash -n "$file"; shellcheck -s bash "$file"; done
+for input in "$source_dir"/modify_*.tmpl; do
+  "${cm[@]}" execute-template < "$input" > "$test_root/modifier.sh"
+  bash -n "$test_root/modifier.sh"
+  shellcheck "$test_root/modifier.sh"
+  if printf '# >>> dotfiles Bash integration >>>\nunterminated\n' | bash "$test_root/modifier.sh" >/dev/null; then
+    echo 'FAIL: accepted a damaged managed block.' >&2; exit 1
+  fi
+done
+echo 'PASS: both OSes, all login entries, preserved local files, idempotence, syntax and backups.'

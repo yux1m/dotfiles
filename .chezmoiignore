@@ -4,3 +4,18 @@ tests
 install.sh
 .github
 .gitignore
+{{ if ne .chezmoi.os "linux" }}
+.bashrc
+.profile
+.bash_profile
+.bash_login
+{{ else if stat (joinPath .chezmoi.destDir ".bash_profile") }}
+.profile
+.bash_login
+{{ else if stat (joinPath .chezmoi.destDir ".bash_login") }}
+.profile
+.bash_profile
+{{ else }}
+.bash_profile
+.bash_login
+{{ end }}

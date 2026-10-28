@@ -8,7 +8,9 @@ snapshot=$(mktemp -d "$backup_root/.snapshot.XXXXXX")
 trap 'rm -rf "$snapshot"' EXIT
 files=(.zshrc .zprofile .config/starship.toml .config/zsh/options.zsh
        .config/zsh/common.zsh .config/zsh/macos.zsh .config/zsh/linux.zsh
-       .config/zsh/plugins.zsh .local/bin/dotfiles)
+       .config/zsh/plugins.zsh .local/bin/dotfiles
+       .bashrc .profile .bash_profile .bash_login
+       .config/bash/init.bash .config/bash/common.bash)
 for rel in "${files[@]}"; do
   if [[ -f "$target_home/$rel" ]]; then
     mkdir -p "$snapshot/$(dirname "$rel")"

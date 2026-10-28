@@ -4,11 +4,12 @@ export PATH="$HOME/.local/bin:$PATH"
 source_dir=$(chezmoi source-path)
 resolve_target() {
   case "${1:-common}" in
+    bash) printf '%s/.config/bash/common.bash\n' "$HOME" ;;
     common|options|macos|linux) printf '%s/.config/zsh/%s.zsh\n' "$HOME" "$1" ;;
     prompt) printf '%s/.config/starship.toml\n' "$HOME" ;;
     zshrc) printf '%s/.zshrc\n' "$HOME" ;;
     zprofile) printf '%s/.zprofile\n' "$HOME" ;;
-    *) echo 'Choose common, options, macos, linux, prompt, plugins, local, zshrc or zprofile.' >&2; return 2 ;;
+    *) echo 'Choose bash, common, options, macos, linux, prompt, plugins, local, zshrc or zprofile.' >&2; return 2 ;;
   esac
 }
 edit_file() {
@@ -30,10 +31,16 @@ case "$command_name" in
     name=${1:-common}
     case "$name" in
       plugins) edit_file "$source_dir/.chezmoidata.toml"; chezmoi apply ;;
-      local) touch "$HOME/.zshrc.local"; chmod 600 "$HOME/.zshrc.local"; edit_file "$HOME/.zshrc.local" ;;
+      local|bash-local|zsh-local)
+        local_file="$HOME/.zshrc.local"
+        if [[ "$name" == bash-local || ( "$name" == local && $(uname -s) == Linux ) ]]; then
+          local_file="$HOME/.bashrc.local"
+        fi
+        touch "$local_file"; chmod 600 "$local_file"; edit_file "$local_file"
+        ;;
       *) chezmoi edit --apply "$(resolve_target "$name")" ;;
     esac
-    echo 'For Zsh changes, open a new terminal or run: exec zsh -l'
+    echo 'Reload: exec bash -l on Ubuntu; exec zsh -l on Mac.'
     ;;
   capture)
     [[ $# == 1 ]] || { echo 'Usage: dotfiles capture NAME (plain managed files only)' >&2; exit 2; }
@@ -46,7 +53,7 @@ case "$command_name" in
     }
     require_applied
     chezmoi update
-    echo 'Open a new terminal or run: exec zsh -l'
+    echo 'Reload: exec bash -l on Ubuntu; exec zsh -l on Mac.'
     ;;
   push)
     require_applied
@@ -59,7 +66,7 @@ case "$command_name" in
     chezmoi status --exclude=scripts
     ;;
   doctor)
-    for tool in zsh chezmoi starship fzf zoxide; do
+    for tool in bash zsh chezmoi starship fzf zoxide; do
       command -v "$tool"
       "$tool" --version | awk 'NR == 1 {print}'
     done
@@ -72,13 +79,15 @@ case "$command_name" in
     ;;
   help|-h|--help)
     cat <<'EOF'
-dotfiles edit common    Shared aliases, functions, key bindings
+dotfiles edit bash      Bash aliases, functions and options (Ubuntu)
+dotfiles edit common    Zsh aliases, functions, key bindings (both OSes)
 dotfiles edit options   Shared options loaded before Oh My Zsh
 dotfiles edit prompt    Starship colors and prompt layout
 dotfiles edit macos     macOS-only settings (sync to the repo)
-dotfiles edit linux     Linux-only settings (sync to the repo)
+dotfiles edit linux     Linux-only Zsh settings (sync to the repo)
 dotfiles edit plugins   Plugin list, sources, pinned versions
-dotfiles edit local     This machine only (never published)
+dotfiles edit local     This machine only (Bash on Linux, Zsh on Mac)
+dotfiles edit bash-local / zsh-local  Explicit shell-specific local settings
 dotfiles capture NAME   Import a directly edited plain config into source
 dotfiles status         Show source and installed-file differences
 dotfiles push           Commit and publish applied source changes
