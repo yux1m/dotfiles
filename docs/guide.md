@@ -64,6 +64,8 @@ dotfiles edit prompt
 
 保存退出后会自动应用。对 Zsh 行为的修改，用新终端检查，或执行：
 
+没有设置其他编辑器时，默认使用 nano：`Ctrl+O` 保存、回车确认、`Ctrl+X` 退出。可以在 `common` 或 `local` 中设置自己的 `EDITOR`；图形编辑器需要等待窗口关闭，例如 `code --wait`。
+
 ```bash
 exec zsh -l
 ```

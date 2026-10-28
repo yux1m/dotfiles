@@ -13,7 +13,7 @@ bash "$source_dir/install.sh" --source "$source_dir"
 chezmoi verify --exclude=scripts
 [[ $(getent passwd "$(id -un)" | cut -d: -f7) == "$(command -v zsh)" ]]
 for tool in starship fzf zoxide; do "$tool" --version; done
-zsh -lic '
+cat > "$HOME/assert-shell.zsh" <<'ZSH'
   [[ "$ZSH_THEME" == "" ]] || exit 1
   (( ${plugins[(Ie)zsh-autosuggestions]} )) || exit 1
   [[ "${plugins[-1]}" == zsh-syntax-highlighting ]] || exit 1
@@ -22,7 +22,8 @@ zsh -lic '
   (( $+widgets[fzf-history-widget] )) || exit 1
   starship prompt >/dev/null
   dotfiles doctor
-' > "$HOME/first-shell.log" 2>&1
+ZSH
+TERM=xterm-256color script -q -e -c 'zsh -lic "source ~/assert-shell.zsh"' /dev/null > "$HOME/first-shell.log" 2>&1
 cat "$HOME/first-shell.log"
 if grep -Ei 'not found|parse error|permission denied|error.*config' "$HOME/first-shell.log"; then
   echo 'FAIL: shell startup emitted an error.' >&2; exit 1
@@ -74,3 +75,32 @@ chezmoi apply --force
 fzf --version | grep -q '^0.74.5'
 chezmoi verify --exclude=scripts
 echo 'PASS: fresh install, actual Zsh session, font, shell, repeat install, capture, checksum failure and repair.'
+
+# Publish in both directions through a local bare remote (no account credentials).
+remote="$HOME/sync-test.git"
+git clone --quiet --bare "$source_dir" "$remote"
+git -C "$source_dir" remote set-url origin "$remote"
+git -C "$source_dir" config user.name 'Dotfiles Test'
+git -C "$source_dir" config user.email 'test@example.invalid'
+second_source="$HOME/second-source"
+second_target="$HOME/second-target"
+git clone --quiet "$remote" "$second_source"
+git -C "$second_source" config user.name 'Second Machine'
+git -C "$second_source" config user.email 'test@example.invalid'
+mkdir -p "$second_target"
+other_cm=(chezmoi --source "$second_source" --destination "$second_target"
+          --config "$HOME/second-config.toml" --cache "$HOME/second-cache"
+          --persistent-state "$HOME/second-state.boltdb")
+DOTFILES_SKIP_INSTALL=1 "${other_cm[@]}" apply --force
+printf '\n# roundtrip-from-first\n' >> "$HOME/.config/zsh/common.zsh"
+dotfiles capture common
+dotfiles push
+DOTFILES_SKIP_INSTALL=1 "${other_cm[@]}" update
+grep -q roundtrip-from-first "$second_target/.config/zsh/common.zsh"
+printf '\n# roundtrip-from-second\n' >> "$second_source/dot_config/zsh/linux.zsh"
+DOTFILES_SKIP_INSTALL=1 "${other_cm[@]}" apply
+"${other_cm[@]}" push
+dotfiles pull
+grep -q roundtrip-from-second "$HOME/.config/zsh/linux.zsh"
+chezmoi verify --exclude=scripts
+echo 'PASS: two-way publishing and updating through Git.'
